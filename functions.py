@@ -46,10 +46,27 @@ def detect_process_errors(df):
     df_client_error.columns = ['had_error','error_count']
     return df_client_error
 
+def detect_process_changes(df):
+    """Function that return the dataframe with added columns in order to get information on the step changes (progress or step back) in the onboarding process"""
+    df = df.sort_values(['client_id','date_time'])
+    process_map = {'start':0, 'step_1':1, 'step_2':2, 'step_3':3, 'confirm':4}
+    df['process_step_id'] = df['process_step'].map(process_map)
+    df['previous_process_step_id'] = (df.sort_values(by=['client_id','date_time']).groupby('client_id')['process_step_id'].shift(1))
+    df['is_error'] = df['process_step_id'] < df['previous_process_step_id']
+    df['is_progress'] = df['process_step_id'] > df['previous_process_step_id']
+    df_client_change = df[(df['is_error'] == True) | (df['is_progress'] == True)].groupby('client_id').agg({
+    'is_error': ['max', 'sum'],
+    'is_progress': ['max', 'sum']
+})
+    df_client_change.columns = ['had_error', 'error_count','had_progress','progress_count']
+    return df_client_change
+
 def data_summary(dfs):
     web_data_summary = dfs[0].join(dfs[1:])
     web_data_summary['had_error'] = web_data_summary['had_error'].fillna(False)
+    web_data_summary['had_progress'] = web_data_summary['had_progress'].fillna(False)
+    web_data_summary['progress_count'] = web_data_summary['progress_count'].fillna(0)
     web_data_summary = web_data_summary.fillna(0)
     web_data_summary['is_confirmed'] = web_data_summary['is_confirmed'].map({1:True, 0:False})
-    web_data_summary[['error_count','no_of_confirms']] = web_data_summary[['error_count','no_of_confirms']].astype(int)
-    return web_data_summary
+    web_data_summary[['error_count', 'progress_count', 'no_of_confirms']] = web_data_summary[['error_count', 'progress_count', 'no_of_confirms']].astype(int)
+    return web_data_summary  
